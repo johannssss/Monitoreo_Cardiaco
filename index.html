@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Central de Telemetría Cardíaca</title>
+  
+  <!-- Tipografía Quirúrgica y Monospace de Grado Clínico -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="styles.css?v=14.0">
+  
+  <!-- Three.js para Renderizado 3D Robusto / Fallback Autónomo -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- Google <model-viewer> Oficial para Carga PBR de Corazón Humano 3D -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+
+  <!-- Paho MQTT para Enlace con ESP32 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+</head>
+<body>
+  <!-- Canvas Acelerado por Hardware para Partículas de Telemetría Clínica -->
+  <canvas id="ambient-particles-canvas" class="ambient-particles-canvas"></canvas>
+
+  <div class="medical-viewport">
+    
+    <!-- ====================================================================
+         1. BARRA SUPERIOR TÁCTICA (GRADO CLÍNICO MINIMALISTA)
+         ==================================================================== -->
+    <header class="top-nav-bar">
+      <div class="nav-left">
+        <div class="brand-badge">
+          <span class="brand-dot-pulse"></span>
+          <span class="brand-name">Central de Telemetría Cardíaca</span>
+        </div>
+
+        <!-- Selector Rápido de Pacientes -->
+        <div class="patient-selector-wrap" title="Seleccionar paciente o admitir nuevo registro">
+          <span class="patient-sel-icon">👤</span>
+          <select id="select-active-patient" class="tactical-patient-select">
+            <option value="" selected>-- Seleccionar Paciente --</option>
+            <option value="PACIENTE_01">Leo Vance (21 años)</option>
+            <option value="PACIENTE_02">Johan Silva (22 años)</option>
+            <option value="PACIENTE_03">Carlos Méndez (48 años)</option>
+            <option value="PACIENTE_04">Valentina Silva (20 años)</option>
+            <option value="NEW">+ Registrar Nuevo Paciente...</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <!-- Chip de Estado General del Sistema -->
+        <div class="top-status-chip" id="top-status-chip" title="Estado de telemetría y conexión">
+          <span class="top-chip-dot" id="top-chip-dot"></span>
+          <span id="top-status-text">STANDBY / EN ESPERA</span>
+        </div>
+
+        <!-- Control de Sonido (Audio Real de Latido Clínico) -->
+        <div class="nav-action-icons">
+          <button class="icon-btn" id="btn-sound" title="Activar/Silenciar latido cardíaco clínico">🔊</button>
+        </div>
+
+        <!-- Botón Hamburguesa: Abre el Panel de Control y Conectividad -->
+        <button class="drawer-trigger-btn" id="btn-open-drawer" onclick="toggleTacticalDrawer(true)" title="Abrir Menú de Control, Hardware, Nube y Supervisor">
+          <span class="hamburger-box">
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+          </span>
+          <span>MENÚ</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ====================================================================
+         BANNER DE ALERTA MÉDICA CRÍTICA
+         (Disparado si BPM > 95% Tanaka sostenido > 15s)
+         ==================================================================== -->
+    <div class="cardiac-emergency-banner" id="banner-cardiac-risk">
+      <div class="banner-left-content">
+        <span class="emergency-icon-pulse">🚨</span>
+        <div class="emergency-text-group">
+          <span class="emergency-title">¡ALERTA CRÍTICA: SOBREESFUERZO CARDÍACO SOSTENIDO (&gt;95% FC MÁXIMA)!</span>
+          <span class="emergency-sub" id="emergency-banner-desc">El paciente supera su umbral seguro de Tanaka durante más de 15 segundos continuos. Riesgo de fallo miocárdico o arritmia. ¡Detener esfuerzo!</span>
+        </div>
+      </div>
+      <div class="banner-right-timer">
+        <span class="timer-label">SOBREESFUERZO CONTINUO:</span>
+        <span class="timer-value" id="emergency-timer-val">16s</span>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         2. ESCENARIO PRINCIPAL
+         - Columna Izquierda: Perfil Fisiológico Ampliado (Sin selector inactivo)
+         - Sector Central: Corazón Humano 3D Anatómico Puro (Sin esqueleto ni barras)
+         - Columna Derecha: Bento Grid 2x2 Puro con Tooltips Interactivos y Definiciones
+         ==================================================================== -->
+    <main class="main-workspace">
+      
+      <!-- ------------------------------------------------------------------
+           COLUMNA IZQUIERDA: PERFIL FISIOLÓGICO EXPANDIDO
+           ------------------------------------------------------------------ -->
+      <aside class="left-patient-column">
+        <div class="patient-card">
+          
+          <!-- Encabezado con Nombre e ID -->
+          <div class="patient-header-clean">
+            <div class="header-name-row">
+              <h1 class="patient-title" id="val-patient-name">Sin Paciente Asignado</h1>
+              <div class="patient-crud-actions">
+                <button class="crud-btn edit" id="btn-edit-patient" title="Editar paciente activo">✏️</button>
+                <button class="crud-btn add" id="btn-add-patient" title="Registrar nuevo paciente">➕</button>
+              </div>
+            </div>
+            <span class="patient-sub-id" id="val-patient-id-display">ID: EN ESPERA DE ADMISIÓN</span>
+          </div>
+
+          <!-- Tarjeta de Perfil Fisiológico -->
+          <div class="profile-inner-box">
+            <div class="profile-box-title-row">
+              <span class="box-title">Perfil Fisiológico</span>
+            </div>
+
+            <!-- Fila: Edad, Género, Estatura -->
+            <div class="profile-row-specs">
+              <div class="mini-spec">
+                <span class="mini-label">Edad:</span>
+                <span class="mini-val" id="val-age-text">-- años</span>
+              </div>
+              <div class="mini-spec">
+                <span class="mini-label">Género:</span>
+                <span class="mini-val" id="val-gender-text">--</span>
+              </div>
+              <div class="mini-spec">
+                <span class="mini-label">Estatura:</span>
+                <span class="mini-val" id="val-height-text">-- cm</span>
+              </div>
+            </div>
+
+            <!-- Fila: Peso Corporal y Tendencia -->
+            <div class="weight-trend-row">
+              <div class="weight-label-group">
+                <span class="mini-label">Peso Corporal:</span>
+                <span class="weight-big-val" id="val-weight-text">-- kg</span>
+              </div>
+              <!-- Sparkline discreta de tendencia -->
+              <div class="weight-sparkline" title="Registro histórico de peso corporal">
+                <span class="w-tick"></span>
+                <span class="w-tick"></span>
+                <span class="w-tick"></span>
+                <span class="w-tick"></span>
+                <span class="w-tick"></span>
+                <span class="w-tick"></span>
+              </div>
+            </div>
+
+            <!-- Fila: IMC Clínico y FC Reposo (Color blanco/plata de alta legibilidad clínica) -->
+            <div class="clinical-metrics-duo">
+              <div class="clinical-metric-card-row">
+                <div class="metric-meta-group">
+                  <span class="mini-label">IMC Clínico:</span>
+                  <span class="sub-badge-mini" id="val-bmi-category">En Espera</span>
+                </div>
+                <span class="mini-val highlight-neutral" id="val-bmi-text">-- kg/m²</span>
+              </div>
+              <div class="clinical-metric-card-row">
+                <div class="metric-meta-group">
+                  <span class="mini-label">FC Reposo Base:</span>
+                  <span class="sub-badge-mini" id="val-fcrest-category">--</span>
+                </div>
+                <span class="mini-val highlight-lime" id="val-fcrest-text">-- LPM</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Monitor de Umbral de Riesgo Clínico (Diseño Limpio Sin Solapamientos) -->
+          <div class="redzone-monitor-card">
+            <div class="redzone-top-row">
+              <div class="title-with-bar">
+                <span class="redzone-title">Umbral de Alerta</span>
+                <div class="card-info-badge" tabindex="0">
+                  <span class="info-icon">ℹ️</span>
+                  <div class="info-popover-tooltip">
+                    <b>Umbral en Reposo (AHA):</b> Límite fisiológico seguro en reposo (Base 120 lpm). En pacientes con sobrepeso u obesidad (IMC ≥ 30), se calibra preventivamente en 110-115 lpm para evitar sobrecarga miocárdica.
+                  </div>
+                </div>
+              </div>
+              <span class="redzone-tag-imc" id="val-redzone-bmi-tag">IMC 30.2</span>
+            </div>
+
+            <div class="redzone-metric-row">
+              <span class="redzone-threshold-val" id="val-redzone-threshold">&gt; 110 LPM</span>
+              <span class="redzone-sub-note">Alerta preventiva reposo</span>
+            </div>
+
+            <div class="redzone-progress-track">
+              <div class="redzone-progress-bar" id="bar-redzone-progress" style="width: 0%;"></div>
+            </div>
+            <div class="redzone-status-row">
+              <span class="redzone-status-txt">Permanencia en Taquicardia:</span>
+              <span class="redzone-timer-num" id="val-redzone-timer">0.0s / 5s</span>
+            </div>
+          </div>
+
+          <!-- Botón de Médico a Cargo -->
+          <button class="doctor-pill-button" id="btn-doctor-card" title="Especialista a cargo del monitoreo">
+            <span class="doc-icon">👤</span>
+            <span class="doc-text">Médico: <b>Dr. Julián Hayes</b></span>
+            <span class="doc-arrow">▾</span>
+          </button>
+
+        </div>
+      </aside>
+
+      <!-- ------------------------------------------------------------------
+           SECTOR CENTRAL: CORAZÓN HUMANO 3D ANATÓMICO PURO
+           (Sin esqueleto de fondo ni controles inactivos)
+           ------------------------------------------------------------------ -->
+      <section class="center-stage-container" id="stage-3d-container">
+        
+        <!-- Foco Radial Médico Limpio -->
+        <div class="medical-clean-focal-backdrop"></div>
+
+        <!-- Modelo 3D Anatómico Real de Corazón Humano (GLTF/GLB via CDN Público) -->
+        <model-viewer id="heart-model-viewer"
+          src="https://cdn.jsdelivr.net/gh/organui/heart-3d@c72ce6654ff8e282942f97750d3104f55ef4fc3d/public/models/heart.glb"
+          alt="Modelo 3D Anatómico del Corazón Humano"
+          auto-rotate
+          rotation-per-second="8deg"
+          camera-controls
+          shadow-intensity="0.6"
+          shadow-softness="0.4"
+          exposure="0.95"
+          interaction-prompt="none"
+          class="heart-3d-viewer">
+        </model-viewer>
+
+        <!-- Canvas Fallback 3D Procedural en caso de que model-viewer falle (ej. apertura por file:// sin servidor o sin internet) -->
+        <canvas id="heart-fallback-canvas" class="heart-fallback-canvas hidden"></canvas>
+
+        <!-- Aura de Sístole Miocárdica Concéntrica Pulsante -->
+        <div class="cardiac-systole-aura" id="cardiac-aura"></div>
+
+        <!-- Callout de Telemetría Cardíaca: Válvula Aórtica / Ápex -->
+        <div class="hologram-callout heart-callout" id="callout-heart">
+          <div class="heart-callout-header">
+            <span class="callout-pulse-dot" id="callout-heart-dot"></span>
+            <span class="callout-title">Válvula Aórtica / Ápex</span>
+          </div>
+          <div class="heart-callout-body">
+            <span class="heart-callout-sub" id="lbl-heart-status">ESTADO: EN ESPERA</span>
+            <span class="heart-callout-val" id="hud-cardiac-bpm">-- LPM</span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ------------------------------------------------------------------
+           COLUMNA DERECHA: 2 PANELES CLÍNICOS PRINCIPALES (SOLICITADOS POR EL PROFESOR)
+           1. Frecuencia Cardíaca (LPM) con histórico de 2h y zoom ampliado.
+           2. Estado Fisiológico del Corazón (Bradicardia, Normocardia, Taquicardia).
+           ------------------------------------------------------------------ -->
+      <aside class="right-metrics-column">
+        
+        <div class="clinical-two-cards-column">
+          
+          <!-- ================================================================
+               TARJETA 1: FRECUENCIA CARDÍACA (LPM) CON ZOOM INTERACTIVO
+               ================================================================ -->
+          <div class="medical-metric-card flex-card card-clickable" id="card-bpm" title="Haga clic para ver el gráfico histórico de 2 horas en tamaño grande">
+            <div class="card-top-header">
+              <div class="title-with-bar">
+                <span class="accent-bar bar-yellow"></span>
+                <span class="card-title">Frecuencia Cardíaca</span>
+                <div class="card-info-badge" tabindex="0">
+                  <span class="info-icon">ℹ️</span>
+                  <div class="info-popover-tooltip">
+                    <b>Frecuencia Cardíaca (FC):</b> Mide las pulsaciones por minuto calculadas en tiempo real a partir del ECG del sensor AD8232 mediante filtrado digital. Haga clic sobre la tarjeta para ver el gráfico ampliado con detalle minuto a minuto.
+                  </div>
+                </div>
+              </div>
+              <div class="header-right-badges">
+                <span class="ref-badge-clean">Ref: 60 - 100 lpm</span>
+              </div>
+            </div>
+
+            <div class="card-value-row">
+              <div class="number-group">
+                <span class="main-big-num" id="val-bpm">--</span>
+                <span class="unit-text">lpm</span>
+                <span class="trend-arrow arrow-yellow" id="arrow-bpm">→</span>
+              </div>
+              <div class="delta-pill pill-yellow" id="badge-delta-bpm">
+                <span id="txt-delta-bpm">-- lpm →</span>
+              </div>
+            </div>
+
+            <!-- Gráfico Histórico de Tendencia (13 Puntos cada 10 min / 2 Horas) -->
+            <div class="chart-canvas-wrapper" data-metric="bpm">
+              <canvas id="chart-bpm" class="discrete-chart-canvas"></canvas>
+            </div>
+            
+            <div class="card-click-hint">
+              <span>🔍 Clic sobre la tarjeta para abrir el gráfico en pantalla grande</span>
+            </div>
+          </div>
+
+          <!-- ================================================================
+               TARJETA 2: ESTADO CARDÍACO (BRADICARDIA / NORMOCARDIA / TAQUICARDIA)
+               ================================================================ -->
+          <div class="medical-metric-card flex-card card-cardiac-status" id="card-cardiac-status">
+            <div class="card-top-header">
+              <div class="title-with-bar">
+                <span class="accent-bar bar-green" id="cardiac-status-accent"></span>
+                <span class="card-title">Estado Cardíaco</span>
+                <div class="card-info-badge" tabindex="0">
+                  <span class="info-icon">ℹ️</span>
+                  <div class="info-popover-tooltip tooltip-upwards">
+                    <b>Rangos Clínicos en Reposo (AHA):</b><br>
+                    • <b>Bradicardia:</b> &lt; 60 LPM (ritmo bajo)<br>
+                    • <b>Normocardia:</b> 60 a 100 LPM (ritmo normal)<br>
+                    • <b>Taquicardia:</b> &gt; 100 LPM (ritmo acelerado)
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Diagnóstico Activo Central (Sin textos redundantes) -->
+            <div class="status-diagnosis-display">
+              <div class="status-badge-main standby" id="cardiac-status-pill">
+                <span class="status-badge-dot" id="cardiac-status-dot"></span>
+                <span class="status-badge-title" id="cardiac-status-text">EN ESPERA (STANDBY)</span>
+              </div>
+            </div>
+
+            <!-- Escala Fisiológica con Indicador en Tiempo Real -->
+            <div class="cardiac-scale-gauge-wrap">
+              <div class="scale-labels-row">
+                <span class="scale-lbl-item brad">&lt; 60 Bradicardia</span>
+                <span class="scale-lbl-item norm">60 - 100 Normocardia</span>
+                <span class="scale-lbl-item taq">&gt; 100 Taquicardia</span>
+              </div>
+              <div class="cardiac-scale-bar-track">
+                <div class="scale-seg seg-bradicardia" title="Bradicardia (&lt; 60 LPM)"></div>
+                <div class="scale-seg seg-normocardia" title="Normocardia (60 - 100 LPM)"></div>
+                <div class="scale-seg seg-taquicardia" title="Taquicardia (&gt; 100 LPM)"></div>
+                <!-- Pin marcador en vivo -->
+                <div class="scale-pointer-pin" id="cardiac-scale-pointer" style="left: 50%;">
+                  <span class="pointer-tip">▼</span>
+                </div>
+              </div>
+              <div class="scale-ticks-row">
+                <span>0</span>
+                <span style="left: 30%;">60</span>
+                <span style="left: 65%;">100</span>
+                <span>180+ LPM</span>
+              </div>
+            </div>
+
+            <!-- Leyenda Académica de Evaluación para el Docente -->
+            <div class="cardiac-clinical-legend-grid">
+              <div class="legend-card brad-sub" id="leg-brad">
+                <span class="leg-title">🔵 Bradicardia</span>
+                <span class="leg-val">&lt; 60 lpm</span>
+              </div>
+              <div class="legend-card norm-sub active" id="leg-norm">
+                <span class="leg-title">🟢 Normocardia</span>
+                <span class="leg-val">60 - 100 lpm</span>
+              </div>
+              <div class="legend-card taq-sub" id="leg-taq">
+                <span class="leg-title">🔴 Taquicardia</span>
+                <span class="leg-val">&gt; 100 lpm</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </aside>
+
+    </main>
+
+    <!-- ====================================================================
+         3. SECTOR INFERIOR: MONITOR OSCILOSCÓPICO DE ECG CLÍNICO FLUIDO (60 FPS)
+         ==================================================================== -->
+    <footer class="bottom-oscilloscope-strip">
+      <div class="strip-header">
+        <div class="strip-title-tag">
+          <span class="ecg-dot-live standby" id="ecg-dot-status"></span>
+          <span class="tag-bold" id="ecg-status-title">ELECTROCARDIOGRAMA (ECG)</span>
+          <span class="ecg-lead-spec">Derivación I • AD8232</span>
+        </div>
+      </div>
+      
+      <div class="strip-canvas-container">
+        <canvas id="ecg-sweep-canvas"></canvas>
+        <div class="ecg-standby-banner" id="ecg-standby-banner">
+          <span>⚡ EN ESPERA DE SEÑAL AD8232 (CONECTE ELECTRODOS RA, LA, RL)</span>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- ====================================================================
+       OVERLAY Y PANEL LATERAL DESLIZABLE (DRAWER TÁCTICO SCADA)
+       ==================================================================== -->
+  <div class="drawer-overlay" id="drawer-overlay" onclick="toggleTacticalDrawer(false)"></div>
+
+  <aside class="tactical-drawer" id="tactical-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div class="drawer-title-group">
+        <span class="drawer-badge">SISTEMA IOT P2P</span>
+        <h2 class="drawer-title">Centro de Control & Gestión</h2>
+        <span class="drawer-subtitle">Hardware, Conectividad, Nube y Supervisor</span>
+      </div>
+      <button class="drawer-close-btn" id="btn-close-drawer" onclick="toggleTacticalDrawer(false)" title="Cerrar panel lateral">✕</button>
+    </div>
+
+    <div class="drawer-body">
+      
+      <!-- SECCIÓN 1: HARDWARE & ADQUISICIÓN TELEMÉTRICA -->
+      <div class="drawer-section">
+        <div class="section-label">
+          <span>🔌</span>
+          <span>Adquisición & Hardware Físico</span>
+        </div>
+        <div class="drawer-card-box">
+          <div class="drawer-item-row">
+            <div class="item-info">
+              <span class="item-title">Enlace USB Directo (WebSerial)</span>
+              <span class="item-desc">Conexión serie a 115200 baudios con el ESP32 Receptor</span>
+            </div>
+            <button class="drawer-btn usb-btn" id="btn-web-serial">
+              <span id="btn-web-serial-label">🔌 Conectar USB</span>
+            </button>
+          </div>
+          <div class="drawer-status-strip">
+            <div class="mqtt-live-badge standby" id="mqtt-badge" title="Estado del microcontrolador ESP32">
+              <span class="status-pulse-dot standby" id="mqtt-dot"></span>
+              <span class="status-txt" id="mqtt-txt">ESP32 DESCONECTADO (ESPERANDO TELEMETRÍA)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 2: CALIDAD DE ELECTRODOS Y ENLACE P2P -->
+      <div class="drawer-section">
+        <div class="section-label">
+          <span>🫀</span>
+          <span>Sensor AD8232 & Enlace MAC</span>
+        </div>
+        <div class="drawer-card-box">
+          <div class="drawer-item-row">
+            <div class="item-info">
+              <span class="item-title">Calidad de Señal y Electrodos</span>
+              <span class="item-desc">Detección continua Leads-Off (LO+ / LO-) en electrodos RA, LA, RL</span>
+            </div>
+          </div>
+          <div class="signal-quality-badge standby" id="signal-quality-badge" title="Continuidad y ruido de electrodos AD8232">
+            <span class="signal-dot-pulse standby" id="signal-dot"></span>
+            <span class="signal-txt" id="signal-txt">CALIDAD ECG: EN ESPERA DE SENSOR (AD8232)</span>
+          </div>
+          <div class="p2p-info-box">
+            <span class="p2p-title">Topología Peer-to-Peer ESP-NOW:</span>
+            <span class="p2p-detail">ESP32 Emisor (AD8232) ➔ ESP32 Receptor (Gateway)</span>
+            <span class="p2p-mac">Transmisión inalámbrica por MAC física (Sin WiFi convencional / Sin Ethernet)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 3: PRUEBAS DE SIMULACIÓN FISIOLÓGICA -->
+      <div class="drawer-section">
+        <div class="section-label">
+          <span>🧪</span>
+          <span>Entorno de Pruebas Fisiológicas</span>
+        </div>
+        <div class="drawer-card-box">
+          <div class="drawer-item-row">
+            <div class="item-info">
+              <span class="item-title">Simulador AD8232 McSharry (250 Hz)</span>
+              <span class="item-desc">Genera trazado electrocardiográfico de prueba para demostraciones</span>
+            </div>
+            <button class="drawer-btn sim-btn" id="btn-toggle-sim">
+              <span id="btn-toggle-sim-txt">🧪 Probar Simulación</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 4: SEGURIDAD & MODO SUPERVISOR -->
+      <div class="drawer-section supervisor-section">
+        <div class="section-label">
+          <span>🔒</span>
+          <span>Seguridad & Acceso Supervisor</span>
+        </div>
+        <div class="drawer-card-box security-box">
+          
+          <!-- Vista Bloqueada (Modo Operador / Solo Lectura) -->
+          <div id="supervisor-locked-view">
+            <div class="security-lock-header">
+              <span class="lock-icon">🔐</span>
+              <div class="lock-text">
+                <span class="lock-title">Acceso Restringido para Supervisor</span>
+                <span class="lock-desc">Se requiere PIN para modificar umbrales clínicos de alerta o exportar registros telemétricos.</span>
+              </div>
+            </div>
+            <div class="pin-input-row">
+              <input type="password" id="input-supervisor-pin" class="pin-input" placeholder="Ingresar PIN (7294)" maxlength="8">
+              <button class="pin-unlock-btn" id="btn-unlock-supervisor">Desbloquear</button>
+            </div>
+            <span class="pin-hint-text" id="pin-feedback-msg">PIN de supervisor clínico por defecto: 7294</span>
+          </div>
+
+          <!-- Vista Desbloqueada (Modo Supervisor Activo) -->
+          <div id="supervisor-unlocked-view" class="hidden">
+            <div class="unlocked-badge">
+              <span>✅ MODO SUPERVISOR AUTORIZADO</span>
+              <button class="lock-again-btn" id="btn-lock-supervisor">Bloquear</button>
+            </div>
+
+            <div class="supervisor-controls-grid">
+              <div class="sup-control-item">
+                <label class="sup-label">Umbral de Alerta Taquicardia (FC Crítica):</label>
+                <div class="sup-input-group">
+                  <input type="number" id="input-custom-threshold" class="sup-number-input" value="120" min="90" max="180">
+                  <span class="sup-unit">LPM</span>
+                  <button class="sup-save-btn" id="btn-save-threshold">Guardar</button>
+                </div>
+              </div>
+
+              <div class="sup-control-item">
+                <label class="sup-label">Exportación Oficial de Datos Registrados:</label>
+                <button class="export-excel-btn" id="btn-export-excel">
+                  <span>📊 Descargar Registro a Excel (CSV)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SECCIÓN 5: SERVIDOR NUBE & ENLACE ONLINE -->
+      <div class="drawer-section">
+        <div class="section-label">
+          <span>🌐</span>
+          <span>Servidor Nube & Enlace Remoto</span>
+        </div>
+        <div class="drawer-card-box">
+          <div class="cloud-info-card">
+            <div class="cloud-header">
+              <span class="cloud-icon">☁️</span>
+              <span class="cloud-status-badge online">Arquitectura Telemetría</span>
+            </div>
+            <p class="cloud-explanation">
+              <b>Modo Online (Visualización Pública):</b> Al alojar este dashboard en <b>GitHub Pages</b> o <b>Vercel</b>, cualquier persona con el link accede en tiempo real en modo <b>Solo Lectura</b> sin alterar registros ni umbrales.
+            </p>
+            <div class="cloud-buttons-row">
+              <button class="drawer-btn iot-btn" id="btn-open-iot-config">
+                <span>⚙️ Configurar Nube (Adafruit IO / MQTT)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- ====================================================================
+       MODAL: GESTIÓN CLÍNICA CRUD DE PACIENTES
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modal-config">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">⚙️ Gestión Clínica de Pacientes</h2>
+        <button class="modal-close-btn" id="btn-close-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-instruction">
+          Ingresa o edita los datos antropométricos del paciente. El sistema recalcula en tiempo real la 
+          <b>Frecuencia Cardíaca Máxima (Fórmula de Tanaka: 208 - 0.7 × Edad)</b>, el <b>IMC Clínico</b> y los <b>umbrales de alerta médica</b>.
+        </p>
+
+        <div class="form-grid">
+          <div class="form-group full-width">
+            <label>Nombre Completo del Paciente / Atleta:</label>
+            <input type="text" id="input-patient-name" value="Leo Vance" class="tactical-input">
+          </div>
+
+          <div class="form-group">
+            <label>ID / Historia Clínica:</label>
+            <input type="text" id="input-patient-id" value="SV-7294" class="tactical-input">
+          </div>
+
+          <div class="form-group">
+            <label>Edad (Años):</label>
+            <input type="number" id="input-patient-age" value="21" min="10" max="100" class="tactical-input">
+          </div>
+
+          <div class="form-group">
+            <label>Género:</label>
+            <select id="input-patient-gender" class="tactical-input">
+              <option value="Masculino" selected>Masculino</option>
+              <option value="Femenino">Femenino</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Peso Corporal (kg):</label>
+            <input type="number" id="input-patient-weight" value="68.5" step="0.5" class="tactical-input">
+          </div>
+
+          <div class="form-group">
+            <label>Estatura (cm):</label>
+            <input type="number" id="input-patient-height" value="178" min="100" max="230" class="tactical-input">
+          </div>
+
+          <div class="form-group full-width">
+            <label>FC en Reposo Base (BPM):</label>
+            <input type="number" id="input-patient-fc-rest" value="62" min="40" max="110" class="tactical-input">
+          </div>
+        </div>
+
+        <!-- Previsualización de Cálculos Clínicos Inmediatos -->
+        <div class="calculated-preview-box">
+          <div class="calc-item">
+            <span class="calc-label">FC Máxima Tanaka:</span>
+            <span class="calc-val highlight-lime" id="preview-fcmax">193 LPM</span>
+          </div>
+          <div class="calc-item">
+            <span class="calc-label">Zona Roja Crítica (>95%):</span>
+            <span class="calc-val alert" id="preview-z5">&gt; 183 LPM</span>
+          </div>
+          <div class="calc-item">
+            <span class="calc-label">IMC Calculado:</span>
+            <span class="calc-val highlight-cyan" id="preview-bmi">21.6 kg/m²</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="pill-btn delete-modal-btn" id="btn-delete-patient-modal">Eliminar Paciente</button>
+        <div class="modal-footer-actions">
+          <button class="pill-btn cancel" id="btn-cancel-modal">Cancelar</button>
+          <button class="pill-btn save" id="btn-save-modal">Guardar y Calibrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL: CONFIGURACIÓN TRANSMISIÓN IOT HACIA SCADA MAESTRO
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modal-iot-settings">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">⚙️ Transmisión IoT hacia SCADA Maestro</h2>
+        <button class="modal-close-btn" id="btn-close-iot-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-instruction">
+          Configuración del nodo transmisor de telemetría biomédica en tiempo real para publicar métricas clínicas y biopotencial hacia un <b>SCADA Maestro Hospitalario</b> vía MQTT Seguro (WSS).
+        </p>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>URL Broker MQTT (WSS):</label>
+            <input type="text" id="input-mqtt-broker" value="broker.emqx.io" class="tactical-input">
+          </div>
+
+          <div class="form-group">
+            <label>Puerto WebSocket Seguro:</label>
+            <input type="number" id="input-mqtt-port" value="8084" class="tactical-input">
+          </div>
+
+          <div class="form-group full-width">
+            <label>Tópico de Publicación SCADA:</label>
+            <input type="text" id="input-mqtt-topic" value="hospital/uci/cama1/telemetria" class="tactical-input">
+          </div>
+
+          <div class="form-group">
+            <label>Usuario MQTT (Auth SCADA):</label>
+            <input type="text" id="input-mqtt-user" placeholder="opcional (ej. uci_transmisor)" class="tactical-input">
+          </div>
+
+          <div class="form-group">
+            <label>Contraseña MQTT:</label>
+            <input type="password" id="input-mqtt-pass" placeholder="••••••••" class="tactical-input">
+          </div>
+
+          <div class="form-group full-width">
+            <label>Enlace WebSocket Directo ESP32 (ws://...):</label>
+            <input type="text" id="input-ws-direct" placeholder="ws://192.168.4.1:81/ecg (Opcional para ingesta local ADC 0-4095)" class="tactical-input">
+          </div>
+        </div>
+
+        <!-- Mapeo Físico de Pines AD8232 a ESP32 -->
+        <div class="pinout-specs-box">
+          <div class="pinout-title">🔌 Conexionado Eléctrico Oficial (AD8232 ➔ ESP32 DevKit):</div>
+          <div class="pinout-grid">
+            <div class="pin-item"><span class="pin-src">OUTPUT (ECG Analógico)</span> <span class="pin-arrow">➔</span> <span class="pin-dst">GPIO 34 (ADC1_CH6)</span></div>
+            <div class="pin-item"><span class="pin-src">LO+ (Leads-Off Positivo)</span> <span class="pin-arrow">➔</span> <span class="pin-dst">GPIO 19 (Digital IN)</span></div>
+            <div class="pin-item"><span class="pin-src">LO- (Leads-Off Negativo)</span> <span class="pin-arrow">➔</span> <span class="pin-dst">GPIO 21 (Digital IN)</span></div>
+            <div class="pin-item"><span class="pin-src">3.3V (VCC Limpio)</span> <span class="pin-arrow">➔</span> <span class="pin-dst">ESP32 3V3</span></div>
+            <div class="pin-item"><span class="pin-src">GND (Masa Común)</span> <span class="pin-arrow">➔</span> <span class="pin-dst">ESP32 GND</span></div>
+          </div>
+          <div class="electrodes-guide">
+            <b>Electrodos Derivación I (Mason-Likar):</b> 🔴 <b>RA</b> (Brazo Der.) | 🟡 <b>LA</b> (Brazo Izq.) | 🟢 <b>RL</b> (Pierna/Cresta Ilíaca Referencia).
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <div class="modal-footer-actions" style="width: 100%; justify-content: flex-end;">
+          <button class="pill-btn cancel" id="btn-cancel-iot-modal">Cerrar</button>
+          <button class="pill-btn save" id="btn-save-iot-modal">Guardar y Reconectar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL: VISUALIZADOR EXPANDIDO DE FRECUENCIA CARDÍACA (PANTALLA COMPLETA)
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modal-expanded-bpm">
+    <div class="modal-card modal-chart-expanded">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 class="modal-title">📈 Historial de Frecuencia Cardíaca (2 Horas)</h2>
+          <span class="modal-subtitle">Registro cronológico detallado cada 10 minutos con marcadores clínicos interactivos</span>
+        </div>
+        <button class="modal-close-btn" id="btn-close-expanded-chart">✕</button>
+      </div>
+
+      <div class="modal-body expanded-chart-body">
+        <!-- Gran Canvas Gráfico Interactivo -->
+        <div class="large-chart-viewport">
+          <canvas id="canvas-expanded-bpm"></canvas>
+        </div>
+
+        <!-- Barra de Estadísticas y Resumen Clínico -->
+        <div class="expanded-chart-stats-bar">
+          <div class="stat-pill">
+            <span class="stat-lbl">FC Actual:</span>
+            <span class="stat-num highlight-yellow" id="stat-fc-curr">-- lpm</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-lbl">FC Promedio (2h):</span>
+            <span class="stat-num" id="stat-fc-avg">-- lpm</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-lbl">Mínima:</span>
+            <span class="stat-num" id="stat-fc-min">-- lpm</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-lbl">Máxima:</span>
+            <span class="stat-num highlight-red" id="stat-fc-max">-- lpm</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-lbl">Estado Predominante:</span>
+            <span class="stat-num highlight-green" id="stat-fc-predom">Normocardia</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: flex-end;">
+        <button class="pill-btn save" id="btn-close-expanded-chart-footer">Cerrar Visualizador</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=14.0"></script>
+</body>
+</html>
