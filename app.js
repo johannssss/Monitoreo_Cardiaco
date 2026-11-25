@@ -1872,6 +1872,7 @@ function initEcgOscilloscope() {
   if (!ecgCanvas) return;
   ecgCtx = ecgCanvas.getContext('2d');
   resizeEcgCanvas();
+  setTimeout(resizeEcgCanvas, 200);
   window.addEventListener('resize', resizeEcgCanvas);
   ecgPrevY = (ecgCanvas.height || 100) * 0.52;
 

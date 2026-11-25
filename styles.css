@@ -2495,8 +2495,10 @@ body.emergency-strobe {
   border-left: 1px solid rgba(0, 255, 136, 0.25);
   box-shadow: -15px 0 50px rgba(0, 0, 0, 0.90);
   z-index: 10001;
-  transform: translateX(100%);
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateX(105%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s ease;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -2504,6 +2506,8 @@ body.emergency-strobe {
 
 .tactical-drawer.open {
   transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
 }
 
 /* Cabecera del Drawer */
@@ -3002,51 +3006,183 @@ body.emergency-strobe {
    ADAPTACIÓN RESPONSIVA PARA TELÉFONOS MÓVILES Y TABLETS (VISTA ENLACE ONLINE)
    ============================================================================== */
 @media (max-width: 960px) {
-  body {
-    height: auto;
+  html, body {
+    height: auto !important;
     min-height: 100vh;
-    overflow-y: auto;
-    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
   }
 
   .medical-viewport {
-    height: auto;
+    height: auto !important;
     min-height: 100vh;
-    padding: 8px;
+    width: 100%;
+    max-width: 100vw;
+    padding: 8px 10px 24px 10px;
     gap: 10px;
+    overflow-x: hidden;
   }
 
+  /* Barra Superior Compacta en Móvil */
   .top-nav-bar {
+    order: 0;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
     min-height: auto;
+    padding: 0;
   }
 
   .nav-left, .nav-center, .nav-right {
     flex-wrap: wrap;
     width: 100%;
     justify-content: space-between;
+    gap: 6px;
   }
 
+  .brand-badge {
+    padding: 4px 10px;
+  }
+
+  .brand-name {
+    font-size: 0.70rem;
+  }
+
+  /* Banner de emergencia arriba si se activa */
+  .cardiac-emergency-banner {
+    order: 1;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  /* EN MÓVIL: EL OSCILOSCOPIO ECG VA ARRIBA PARA VERSE AL INSTANTE */
+  .bottom-oscilloscope-strip {
+    order: 2;
+    width: 100%;
+    height: 210px !important;
+    min-height: 210px !important;
+    max-height: 210px !important;
+    padding: 8px 10px;
+    margin-top: 0;
+  }
+
+  .strip-header {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 4px;
+  }
+
+  .strip-title-tag {
+    white-space: normal;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .ecg-dot-live {
+    flex-shrink: 0;
+  }
+
+  .tag-bold {
+    font-size: 0.65rem;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .strip-metrics-group {
+    flex-wrap: wrap;
+  }
+
+  .ecg-standby-banner span {
+    font-size: 0.70rem;
+    text-align: center;
+    padding: 0 10px;
+  }
+
+  /* WORKSPACE PRINCIPAL EN 1 COLUMNA SIN DESBORDAMIENTO */
   .main-workspace {
-    grid-template-columns: 1fr;
+    order: 3;
+    display: flex;
+    flex-direction: column;
     gap: 10px;
     flex: none;
+    width: 100%;
+    min-width: 0;
   }
 
-  .heart-stage-column,
-  .right-telemetry-column,
+  .right-metrics-column {
+    order: 1;
+    width: 100%;
+    height: auto;
+    min-width: 0;
+  }
+
+  .clinical-two-cards-column {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: auto;
+  }
+
+  .center-stage-container {
+    order: 2;
+    width: 100%;
+    height: 280px !important;
+    min-height: 280px !important;
+    min-width: 0;
+  }
+
+  .heart-callout {
+    top: 10px;
+    right: 10px;
+    padding: 6px 10px;
+  }
+
   .left-patient-column {
-    min-height: auto;
+    order: 3;
+    width: 100%;
+    min-width: 0;
   }
 
-  .heart-stage-card {
-    min-height: 270px;
+  .patient-card {
+    height: auto;
   }
 
-  .ecg-oscilloscope-footer {
-    min-height: 220px;
-    height: 220px;
+  .medical-metric-card {
+    padding: 12px;
+    min-width: 0;
+  }
+
+  .main-big-num {
+    font-size: 2.5rem;
+  }
+
+  .cardiac-clinical-legend-grid {
+    gap: 5px;
+  }
+
+  .legend-card {
+    padding: 6px 4px;
+  }
+
+  .leg-title {
+    font-size: 0.65rem;
+  }
+
+  .leg-val {
+    font-size: 0.65rem;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-group.full-width {
+    grid-column: span 1;
   }
 
   .tactical-drawer {
